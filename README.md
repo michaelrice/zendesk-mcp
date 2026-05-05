@@ -20,24 +20,30 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 
 
 ## Install
 
+Install into a project-local virtualenv. Using a venv keeps `zendesk-mcp` and its dependencies isolated from your system Python and from other projects, and is the recommended path for everything below.
+
 From a clone of this repository:
 
 ```bash
-pip install -e .
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -e .
 ```
 
-Or for development (includes pytest):
+For development (also installs pytest):
 
 ```bash
-pip install -e ".[dev]"
+.venv/bin/pip install -e ".[dev]"
 ```
+
+> Throughout this README, commands use the venv's binaries via `.venv/bin/...`. You can instead `source .venv/bin/activate` once per shell and drop the prefix — the result is the same.
 
 ## OAuth setup
 
-Run the interactive setup:
+Run the interactive setup using the venv's Python:
 
 ```bash
-python -m zendesk_mcp setup
+.venv/bin/python -m zendesk_mcp setup
 ```
 
 You will be prompted for:
@@ -53,8 +59,17 @@ If you have no browser, the URL is printed to the terminal — open it on any de
 
 ## Register with Claude Code
 
+Register the MCP server using the venv's Python by absolute path. Claude Code launches the server in a fresh shell that does **not** inherit your activated venv, so the absolute path is required — pointing at a bare `python` here will fail to import `zendesk_mcp`.
+
 ```bash
-claude mcp add --scope user zendesk -- python -m zendesk_mcp
+ZENDESK_MCP_DIR="$(pwd)"   # run this from the repo root, after install
+claude mcp add --scope user zendesk -- "$ZENDESK_MCP_DIR/.venv/bin/python" -m zendesk_mcp
+```
+
+Or just inline the absolute path you want:
+
+```bash
+claude mcp add --scope user zendesk -- /absolute/path/to/zendesk-mcp/.venv/bin/python -m zendesk_mcp
 ```
 
 Then add the read tools to `permissions.allow` in `~/.claude/settings.json` to avoid per-call prompts:
@@ -96,7 +111,7 @@ Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_
 
 ## Optional: Git-Zen integration
 
-If your Zendesk instance uses the [Git-Zen](https://www.zendesk.com/marketplace/apps/support/630175/git-zen-zendesk-and-gitlab-integration/) app, the `zendesk_get_git_zen_links` tool can read its custom-field payload. Find your instance's Git-Zen custom field ID under **Admin → Tickets → Fields** (it is a numeric ID), then either set it during `python -m zendesk_mcp setup` or edit `~/.config/zendesk-mcp/config.json` to add:
+If your Zendesk instance uses the [Git-Zen](https://www.zendesk.com/marketplace/apps/support/630175/git-zen-zendesk-and-gitlab-integration/) app, the `zendesk_get_git_zen_links` tool can read its custom-field payload. Find your instance's Git-Zen custom field ID under **Admin → Tickets → Fields** (it is a numeric ID), then either set it during `.venv/bin/python -m zendesk_mcp setup` or edit `~/.config/zendesk-mcp/config.json` to add:
 
 ```json
 {
@@ -109,8 +124,9 @@ Without this configured, `zendesk_get_git_zen_links` returns a "not configured" 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest
 ```
 
 Tests run on Python 3.10, 3.11, and 3.12 in CI (see `.github/workflows/test.yml`).
