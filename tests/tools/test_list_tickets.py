@@ -1,6 +1,5 @@
 import json
 from unittest.mock import patch, MagicMock
-from zendesk_mcp.client import ConfigError
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
@@ -99,9 +98,8 @@ def test_get_tickets_returns_previous_page_when_paginated(mock_load_config, mock
 
 
 @patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_raises_config_error_when_unconfigured(mock_load_config):
+def test_get_tickets_returns_config_error_message_when_unconfigured(mock_load_config):
     mock_load_config.return_value = {}
     from zendesk_mcp.tools.list_tickets import _get_tickets_data
-    import pytest
-    with pytest.raises(ConfigError):
-        _get_tickets_data()
+    result = _get_tickets_data()
+    assert "zendesk-mcp setup" in result

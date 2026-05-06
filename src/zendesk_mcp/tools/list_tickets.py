@@ -1,6 +1,5 @@
 import json
 import httpx
-from zendesk_mcp.client import ConfigError
 from zendesk_mcp.config import load_config
 
 _VALID_SORT_BY = {"created_at", "updated_at", "priority", "status"}
@@ -25,7 +24,7 @@ def _get_tickets_data(
     subdomain = cfg.get("subdomain", "").strip()
     token = cfg.get("oauth_token", "").strip()
     if not subdomain or not token:
-        raise ConfigError("Zendesk not configured. Run: zendesk-mcp setup")
+        return "Zendesk not configured. Run: zendesk-mcp setup"
 
     url = f"https://{subdomain}.zendesk.com/api/v2/tickets.json"
     try:
@@ -76,7 +75,4 @@ def register_list_tickets_tools(mcp) -> None:
         sort_order: str = "desc",
     ) -> str:
         """List Zendesk tickets with pagination. page: 1-based page number. per_page: max 100. sort_by: created_at, updated_at, priority, or status. sort_order: asc or desc. Returns tickets plus pagination metadata."""
-        try:
-            return _get_tickets_data(page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
-        except ConfigError as e:
-            return str(e)
+        return _get_tickets_data(page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
