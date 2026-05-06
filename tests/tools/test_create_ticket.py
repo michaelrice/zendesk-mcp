@@ -102,3 +102,21 @@ def test_create_ticket_returns_generic_error_on_api_failure(mock_get_client, moc
     result = _create_ticket_data(subject="x", description="y")
     assert "Zendesk API error" in result
     assert "kaboom" in result
+
+
+@patch("zendesk_mcp.tools.create_ticket.ZenpyTicket")
+@patch("zendesk_mcp.tools.create_ticket.get_client")
+def test_create_ticket_returns_error_when_audit_lacks_ticket(mock_get_client, mock_ticket_cls):
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+    mock_ticket_cls.return_value = MagicMock()
+
+    audit = MagicMock()
+    audit.ticket = None
+    mock_client.tickets.create.return_value = audit
+
+    from zendesk_mcp.tools.create_ticket import _create_ticket_data
+    result = _create_ticket_data(subject="x", description="y")
+
+    assert "could not be determined" in result.lower()
+    mock_client.tickets.assert_not_called()

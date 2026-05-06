@@ -37,7 +37,7 @@ def _create_ticket_data(
             kwargs["custom_fields"] = custom_fields
         ticket = ZenpyTicket(**kwargs)
         audit = client.tickets.create(ticket)
-        created_id = getattr(getattr(audit, "ticket", None), "id", None) or getattr(audit, "id", None)
+        created_id = getattr(getattr(audit, "ticket", None), "id", None)
         if created_id is None:
             return "Ticket created but ID could not be determined from Zendesk response."
         refreshed = client.tickets(id=created_id)
