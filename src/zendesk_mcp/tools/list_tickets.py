@@ -37,8 +37,6 @@ def _get_tickets_data(
         )
         response.raise_for_status()
         data = response.json()
-    except ConfigError:
-        raise
     except Exception as e:
         return f"Zendesk API error: {e}"
 
@@ -65,7 +63,7 @@ def _get_tickets_data(
         "sort_order": sort_order,
         "has_more": has_more,
         "next_page": page + 1 if has_more else None,
-        "previous_page": page - 1 if data.get("previous_page") and page > 1 else None,
+        "previous_page": page - 1 if page > 1 else None,
     }, indent=2)
 
 
