@@ -2,6 +2,15 @@ import json
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
+import pytest
+import zendesk_mcp.tools.knowledge_base as kb_module
+
+
+@pytest.fixture(autouse=True)
+def _clear_kb_cache():
+    yield
+    kb_module._get_knowledge_base_data_cached.cache_clear()
+
 
 def _mk_section(section_id: int, name: str, description: str = ""):
     s = MagicMock()
@@ -51,6 +60,9 @@ def test_get_knowledge_base_data_happy_path(mock_get_client):
 
     assert parsed["metadata"]["sections"] == 2
     assert parsed["metadata"]["total_articles"] == 3
+
+    mock_client.help_center.sections.articles.assert_any_call(1)
+    mock_client.help_center.sections.articles.assert_any_call(2)
 
 
 def test_register_knowledge_base_resource_skipped_when_disabled():
