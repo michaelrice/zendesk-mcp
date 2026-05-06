@@ -163,6 +163,12 @@ def run_setup() -> None:
         except ValueError:
             print(f"  Warning: '{git_zen_input}' is not a valid integer; skipping Git-Zen field ID.")
 
+    kb_input = input(
+        "  Enable Help Center knowledge base resource? (y/N): "
+    ).strip().lower()
+    if kb_input in {"y", "yes"}:
+        config_data["knowledge_base_enabled"] = True
+
     save_config(config_data)
 
     cfg_path = config_path()
