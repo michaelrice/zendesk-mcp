@@ -19,6 +19,7 @@ def main() -> None:
     from zendesk_mcp.tools.time_tracking import register_time_tracking_tools
     from zendesk_mcp.tools.git_zen import register_git_zen_tools
     from zendesk_mcp.tools.create_ticket import register_create_ticket_tools
+    from zendesk_mcp.tools.list_tickets import register_list_tickets_tools
 
     register_ticket_tools(mcp)
     register_comments_tools(mcp)
@@ -29,6 +30,7 @@ def main() -> None:
     register_time_tracking_tools(mcp)
     register_git_zen_tools(mcp)
     register_create_ticket_tools(mcp)
+    register_list_tickets_tools(mcp)
 
     mcp.run()
 
