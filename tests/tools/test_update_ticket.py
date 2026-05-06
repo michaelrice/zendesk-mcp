@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 from unittest.mock import patch, MagicMock
 from zendesk_mcp.client import ConfigError
 
@@ -135,9 +137,6 @@ def test_assign_ticket_returns_error_on_config_error(mock_get_client):
 
 
 # ---- generic update_ticket tests ----
-
-import json
-from datetime import datetime
 
 
 def _make_refreshed_update_ticket():
