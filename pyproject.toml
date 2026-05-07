@@ -12,6 +12,31 @@ requires-python = ">=3.10"
 authors = [
     { name = "Michael Rice", email = "michael@michaelrice.org" },
 ]
+keywords = [
+    "zendesk",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "anthropic",
+    "support",
+    "helpdesk",
+    "ticketing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Customer Service",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "mcp>=1.0.0",
     "zenpy>=2.0.0",
@@ -20,6 +45,12 @@ dependencies = [
     "httpx>=0.27.0",
     "cachetools>=5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/michaelrice/zendesk-mcp"
+Repository = "https://github.com/michaelrice/zendesk-mcp"
+Issues = "https://github.com/michaelrice/zendesk-mcp/issues"
+Changelog = "https://github.com/michaelrice/zendesk-mcp/releases"
 
 [project.optional-dependencies]
 dev = [
