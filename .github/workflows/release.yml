@@ -39,3 +39,58 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  pack-mcpb:
+    name: Pack MCPB bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Sync bundle version with tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Releasing as version $VERSION"
+          sed -i "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" mcpb/manifest.json
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" mcpb/pyproject.toml
+          sed -i "s/zendesk-mcp==[^\"]*/zendesk-mcp==$VERSION/" mcpb/pyproject.toml
+          cat mcpb/manifest.json
+          echo "---"
+          cat mcpb/pyproject.toml
+      - name: Pack bundle
+        run: |
+          cd mcpb
+          npx -y @anthropic-ai/mcpb pack . "../zendesk-mcp-${GITHUB_REF_NAME#v}.mcpb"
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb
+          path: zendesk-mcp-*.mcpb
+
+  github-release:
+    name: Create GitHub release
+    needs: [publish, pack-mcpb]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mcpb
+          path: .
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/* zendesk-mcp-*.mcpb
