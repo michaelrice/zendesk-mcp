@@ -1,11 +1,12 @@
 import json
 from unittest.mock import patch, MagicMock
+from zendesk_mcp.client import ConfigError
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_happy_path(mock_load_config, mock_httpx_get):
-    mock_load_config.return_value = {"subdomain": "acme", "oauth_token": "tok"}
+@patch("zendesk_mcp.tools.list_tickets.get_oauth_session")
+def test_get_tickets_happy_path(mock_oauth, mock_httpx_get):
+    mock_oauth.return_value = ("acme", "tok")
     response = MagicMock()
     response.json.return_value = {
         "tickets": [
@@ -45,9 +46,9 @@ def test_get_tickets_happy_path(mock_load_config, mock_httpx_get):
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_caps_per_page(mock_load_config, mock_httpx_get):
-    mock_load_config.return_value = {"subdomain": "acme", "oauth_token": "tok"}
+@patch("zendesk_mcp.tools.list_tickets.get_oauth_session")
+def test_get_tickets_caps_per_page(mock_oauth, mock_httpx_get):
+    mock_oauth.return_value = ("acme", "tok")
     response = MagicMock()
     response.json.return_value = {"tickets": [], "next_page": None, "previous_page": None}
     response.raise_for_status = MagicMock()
@@ -59,8 +60,7 @@ def test_get_tickets_caps_per_page(mock_load_config, mock_httpx_get):
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_rejects_invalid_sort_by(mock_load_config, mock_httpx_get):
+def test_get_tickets_rejects_invalid_sort_by(mock_httpx_get):
     from zendesk_mcp.tools.list_tickets import _get_tickets_data
     result = _get_tickets_data(sort_by="banana")
     assert "invalid sort_by" in result.lower()
@@ -69,8 +69,7 @@ def test_get_tickets_rejects_invalid_sort_by(mock_load_config, mock_httpx_get):
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_rejects_invalid_sort_order(mock_load_config, mock_httpx_get):
+def test_get_tickets_rejects_invalid_sort_order(mock_httpx_get):
     from zendesk_mcp.tools.list_tickets import _get_tickets_data
     result = _get_tickets_data(sort_order="sideways")
     assert "invalid sort_order" in result.lower()
@@ -78,9 +77,9 @@ def test_get_tickets_rejects_invalid_sort_order(mock_load_config, mock_httpx_get
 
 
 @patch("zendesk_mcp.tools.list_tickets.httpx.get")
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_returns_previous_page_when_paginated(mock_load_config, mock_httpx_get):
-    mock_load_config.return_value = {"subdomain": "acme", "oauth_token": "tok"}
+@patch("zendesk_mcp.tools.list_tickets.get_oauth_session")
+def test_get_tickets_returns_previous_page_when_paginated(mock_oauth, mock_httpx_get):
+    mock_oauth.return_value = ("acme", "tok")
     response = MagicMock()
     response.json.return_value = {
         "tickets": [],
@@ -97,9 +96,9 @@ def test_get_tickets_returns_previous_page_when_paginated(mock_load_config, mock
     assert parsed["has_more"] is False
 
 
-@patch("zendesk_mcp.tools.list_tickets.load_config")
-def test_get_tickets_returns_config_error_message_when_unconfigured(mock_load_config):
-    mock_load_config.return_value = {}
+@patch("zendesk_mcp.tools.list_tickets.get_oauth_session")
+def test_get_tickets_returns_config_error_message_when_unconfigured(mock_oauth):
+    mock_oauth.side_effect = ConfigError("Zendesk not configured. Run: zendesk-mcp setup")
     from zendesk_mcp.tools.list_tickets import _get_tickets_data
     result = _get_tickets_data()
     assert "zendesk-mcp setup" in result

@@ -21,6 +21,13 @@ def main() -> None:
     from zendesk_mcp.tools.create_ticket import register_create_ticket_tools
     from zendesk_mcp.tools.list_tickets import register_list_tickets_tools
     from zendesk_mcp.tools.knowledge_base import register_knowledge_base_resource
+    from zendesk_mcp.tools.tags import register_tag_tools
+    from zendesk_mcp.tools.views import register_view_tools
+    from zendesk_mcp.tools.macros import register_macro_tools
+    from zendesk_mcp.tools.users import register_user_tools
+    from zendesk_mcp.tools.groups import register_group_tools
+    from zendesk_mcp.tools.organizations import register_organization_tools
+    from zendesk_mcp.tools.custom_statuses import register_custom_status_tools
     from zendesk_mcp.prompts import register_prompts
 
     register_ticket_tools(mcp)
@@ -34,6 +41,13 @@ def main() -> None:
     register_create_ticket_tools(mcp)
     register_list_tickets_tools(mcp)
     register_knowledge_base_resource(mcp)
+    register_tag_tools(mcp)
+    register_view_tools(mcp)
+    register_macro_tools(mcp)
+    register_user_tools(mcp)
+    register_group_tools(mcp)
+    register_organization_tools(mcp)
+    register_custom_status_tools(mcp)
     register_prompts(mcp)
 
     mcp.run()

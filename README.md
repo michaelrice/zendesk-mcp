@@ -5,9 +5,11 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 
 ## What it does
 
 - Search, list (paginated), and fetch Zendesk tickets, comments, and attachments
-- Create new tickets and update existing ticket fields
+- Create new tickets and update existing ticket fields (including group, custom status, and tags)
 - Post public replies and internal notes
 - Set ticket status and assign tickets to agents
+- Browse and apply views and macros
+- Look up users, groups, organizations, and custom statuses
 - Read and write time-tracking entries
 - Format a ticket as a Markdown issue draft for handoff to a tracker (GitLab, GitHub, Jira)
 - Two MCP prompts (`analyze-ticket`, `draft-ticket-response`) for ticket analysis and response drafting
@@ -88,15 +90,27 @@ Then add the read tools to `permissions.allow` in `~/.claude/settings.json` to a
       "mcp__zendesk__zendesk_list_attachments",
       "mcp__zendesk__zendesk_download_attachment",
       "mcp__zendesk__zendesk_search_tickets",
-      "mcp__zendesk__zendesk_ticket_to_gitlab_context"
+      "mcp__zendesk__zendesk_ticket_to_gitlab_context",
+      "mcp__zendesk__zendesk_list_views",
+      "mcp__zendesk__zendesk_get_view",
+      "mcp__zendesk__zendesk_get_view_tickets",
+      "mcp__zendesk__zendesk_list_macros",
+      "mcp__zendesk__zendesk_preview_macro",
+      "mcp__zendesk__zendesk_search_users",
+      "mcp__zendesk__zendesk_get_groups",
+      "mcp__zendesk__zendesk_get_group_users",
+      "mcp__zendesk__zendesk_get_organization",
+      "mcp__zendesk__zendesk_list_custom_statuses"
     ]
   }
 }
 ```
 
-Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_ticket_status`, `zendesk_assign_ticket`, `zendesk_create_ticket`, `zendesk_update_ticket`, `zendesk_log_time`) are intentionally not in the default allow-list — Claude will prompt you per call.
+Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_ticket_status`, `zendesk_assign_ticket`, `zendesk_create_ticket`, `zendesk_update_ticket`, `zendesk_log_time`, `zendesk_add_tag`, `zendesk_remove_tag`, `zendesk_apply_macro`) are intentionally not in the default allow-list — Claude will prompt you per call.
 
 ## Tools
+
+### Tickets
 
 | Tool | What it does |
 |---|---|
@@ -104,7 +118,7 @@ Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_
 | `zendesk_get_tickets` | List tickets with pagination and sorting (page, per_page, sort_by, sort_order) |
 | `zendesk_get_ticket` | Get one ticket's metadata |
 | `zendesk_create_ticket` | Create a new ticket (subject, description, optional priority/type/assignee_id/requester_id/tags/custom_fields) |
-| `zendesk_update_ticket` | Update one or more fields on an existing ticket (status, priority, subject, type, assignee_id, requester_id, tags, custom_fields, due_at) |
+| `zendesk_update_ticket` | Update one or more fields on an existing ticket (status, priority, subject, type, assignee_id, requester_id, group_id, custom_status_id, tags, custom_fields, due_at) |
 | `zendesk_get_comments` | Get the conversation thread on a ticket |
 | `zendesk_list_attachments` | List attachments on a ticket |
 | `zendesk_download_attachment` | Download an attachment to a local cache directory |
@@ -113,8 +127,46 @@ Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_
 | `zendesk_post_internal_note` | Post an agent-only internal note on a ticket |
 | `zendesk_set_ticket_status` | Set ticket status (`new`, `open`, `pending`, `hold`, `solved`, `closed`) |
 | `zendesk_assign_ticket` | Assign a ticket to an agent by email or `me` |
+
+### Tags
+
+| Tool | What it does |
+|---|---|
+| `zendesk_add_tag` | Add a tag to a ticket (idempotent) |
+| `zendesk_remove_tag` | Remove a tag from a ticket (idempotent) |
+
+### Views & Macros
+
+| Tool | What it does |
+|---|---|
+| `zendesk_list_views` | List all active views |
+| `zendesk_get_view` | Get a view's filter conditions and execution settings |
+| `zendesk_get_view_tickets` | Fetch tickets currently matching a view |
+| `zendesk_list_macros` | List active macros with their actions |
+| `zendesk_preview_macro` | Preview what changes a macro would make |
+| `zendesk_apply_macro` | Apply a macro to a ticket (applies field changes and posts any comment) |
+
+### Users, Groups & Organizations
+
+| Tool | What it does |
+|---|---|
+| `zendesk_search_users` | Find users by name or email |
+| `zendesk_get_groups` | List all active groups |
+| `zendesk_get_group_users` | List the members of a group |
+| `zendesk_get_organization` | Fetch an organization including custom fields |
+| `zendesk_list_custom_statuses` | List all custom ticket statuses and their IDs |
+
+### Time tracking
+
+| Tool | What it does |
+|---|---|
 | `zendesk_get_time_tracking` | Read time-tracking entries for a ticket |
 | `zendesk_log_time` | Log a time entry against a ticket |
+
+### Git-Zen integration
+
+| Tool | What it does |
+|---|---|
 | `zendesk_get_git_zen_links` | (Git-Zen only) Get linked GitLab issues / MRs / commits for a ticket |
 
 ## Prompts
