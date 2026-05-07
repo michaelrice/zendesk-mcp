@@ -26,6 +26,7 @@ def main() -> None:
     from zendesk_mcp.tools.macros import register_macro_tools
     from zendesk_mcp.tools.users import register_user_tools
     from zendesk_mcp.tools.groups import register_group_tools
+    from zendesk_mcp.tools.organizations import register_organization_tools
     from zendesk_mcp.prompts import register_prompts
 
     register_ticket_tools(mcp)
@@ -44,6 +45,7 @@ def main() -> None:
     register_macro_tools(mcp)
     register_user_tools(mcp)
     register_group_tools(mcp)
+    register_organization_tools(mcp)
     register_prompts(mcp)
 
     mcp.run()
