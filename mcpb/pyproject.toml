@@ -1,0 +1,8 @@
+[project]
+name = "zendesk-mcp-bundle"
+version = "0.1.1"
+description = "MCPB bundle wrapper for the zendesk-mcp PyPI package"
+requires-python = ">=3.10"
+dependencies = [
+    "zendesk-mcp==0.1.1"
+]

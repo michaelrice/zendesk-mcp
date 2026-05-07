@@ -1,0 +1,47 @@
+{
+  "manifest_version": "0.4",
+  "name": "zendesk-mcp",
+  "display_name": "Zendesk MCP",
+  "version": "0.1.1",
+  "description": "Read/write MCP server for Zendesk: tickets, comments, views, macros, users, groups, organizations, and time tracking.",
+  "long_description": "A Model Context Protocol server that exposes Zendesk ticket read and write tools to Claude Desktop and other MCP clients. Search, list, and fetch tickets, comments, and attachments; create new tickets and update existing fields including group, custom status, and tags; post public replies and internal notes; set ticket status and assign agents; browse and apply views and macros; look up users, groups, organizations, and custom statuses; read and write time-tracking entries; format a ticket as a Markdown issue draft for handoff to GitLab, GitHub, or Jira. Optional Help Center knowledge base resource and optional Git-Zen integration for linked GitLab issues, MRs, and commits.\n\nBefore first use, run `uvx zendesk-mcp setup` in a terminal to complete the Zendesk OAuth handshake.",
+  "author": {
+    "name": "Michael Rice",
+    "email": "michael@michaelrice.org",
+    "url": "https://github.com/michaelrice"
+  },
+  "homepage": "https://github.com/michaelrice/zendesk-mcp",
+  "documentation": "https://github.com/michaelrice/zendesk-mcp#readme",
+  "support": "https://github.com/michaelrice/zendesk-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelrice/zendesk-mcp"
+  },
+  "keywords": [
+    "zendesk",
+    "support",
+    "helpdesk",
+    "ticketing",
+    "customer-service"
+  ],
+  "license": "Apache-2.0",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "src/server.py"
+      ]
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}
