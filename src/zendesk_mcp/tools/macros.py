@@ -62,6 +62,9 @@ def _apply_macro_data(ticket_id: int, macro_id: int) -> str:
     applied_changes = {}
     comment_added = False
 
+    # Note: the field update and comment post are two separate API calls, so
+    # if the comment fails after the field update succeeds, the ticket is left
+    # in a partially-mutated state and the caller sees a generic error.
     try:
         client = get_client()
 
