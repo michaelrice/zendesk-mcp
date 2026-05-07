@@ -35,9 +35,7 @@ def test_get_client_returns_zenpy_instance(tmp_path):
         assert result is mock_instance
 
 
-def test_get_oauth_session_returns_subdomain_and_token(tmp_path):
-    cfg_file = tmp_path / "config.json"
-    cfg_file.write_text(json.dumps({"subdomain": "acme", "oauth_token": "tok123"}))
+def test_get_oauth_session_returns_subdomain_and_token():
     with patch("zendesk_mcp.client.load_config", return_value={"subdomain": "acme", "oauth_token": "tok123"}):
         from zendesk_mcp.client import get_oauth_session
         subdomain, token = get_oauth_session()
