@@ -1,6 +1,6 @@
 import json
 import httpx
-from zendesk_mcp.config import load_config
+from zendesk_mcp.client import get_oauth_session, ConfigError
 
 _VALID_SORT_BY = {"created_at", "updated_at", "priority", "status"}
 _VALID_SORT_ORDER = {"asc", "desc"}
@@ -20,11 +20,10 @@ def _get_tickets_data(
     per_page = max(1, min(per_page, _MAX_PER_PAGE))
     page = max(1, int(page))
 
-    cfg = load_config()
-    subdomain = cfg.get("subdomain", "").strip()
-    token = cfg.get("oauth_token", "").strip()
-    if not subdomain or not token:
-        return "Zendesk not configured. Run: zendesk-mcp setup"
+    try:
+        subdomain, token = get_oauth_session()
+    except ConfigError as e:
+        return str(e)
 
     url = f"https://{subdomain}.zendesk.com/api/v2/tickets.json"
     try:
