@@ -217,3 +217,6 @@ Tests run on Python 3.10, 3.11, and 3.12 in CI (see `.github/workflows/test.yml`
 ## License
 
 [Apache-2.0](LICENSE)
+
+<!-- mcp-name: io.github.michaelrice/zendesk-mcp -->
+
