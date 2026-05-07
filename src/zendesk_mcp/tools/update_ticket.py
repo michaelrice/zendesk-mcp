@@ -11,6 +11,7 @@ _VALID_TYPES = {"problem", "incident", "question", "task"}
 _UPDATABLE_FIELDS = {
     "subject", "status", "priority", "type",
     "assignee_id", "requester_id", "tags", "custom_fields", "due_at",
+    "group_id", "custom_status_id",
 }
 
 
@@ -43,6 +44,8 @@ def _update_ticket_data(ticket_id: int, **fields) -> str:
             "requester_id": refreshed.requester_id,
             "assignee_id": refreshed.assignee_id,
             "organization_id": getattr(refreshed, "organization_id", None),
+            "group_id": getattr(refreshed, "group_id", None),
+            "custom_status_id": getattr(refreshed, "custom_status_id", None),
             "tags": list(getattr(refreshed, "tags", []) or []),
         }, indent=2)
     except ConfigError as e:
@@ -115,8 +118,10 @@ def register_update_ticket_tools(mcp) -> None:
         tags: list | None = None,
         custom_fields: list | None = None,
         due_at: str | None = None,
+        group_id: int | None = None,
+        custom_status_id: int | None = None,
     ) -> str:
-        """Update one or more fields on a Zendesk ticket. Pass only the fields you want to change. status: new/open/pending/hold/solved/closed. priority: low/normal/high/urgent. type: problem/incident/question/task. assignee_id and requester_id are user IDs (integers). due_at is ISO8601. Returns JSON of the refreshed ticket."""
+        """Update one or more fields on a Zendesk ticket. Pass only the fields you want to change. status: new/open/pending/hold/solved/closed. priority: low/normal/high/urgent. type: problem/incident/question/task. assignee_id, requester_id, group_id, custom_status_id are integer IDs. due_at is ISO8601. Returns JSON of the refreshed ticket."""
         return _update_ticket_data(
             ticket_id=ticket_id,
             subject=subject,
@@ -128,4 +133,6 @@ def register_update_ticket_tools(mcp) -> None:
             tags=tags,
             custom_fields=custom_fields,
             due_at=due_at,
+            group_id=group_id,
+            custom_status_id=custom_status_id,
         )

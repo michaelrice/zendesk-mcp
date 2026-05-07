@@ -152,6 +152,8 @@ def _make_refreshed_update_ticket():
     t.requester_id = 101
     t.assignee_id = 42
     t.organization_id = 303
+    t.group_id = None
+    t.custom_status_id = None
     t.tags = ["x", "y"]
     return t
 
@@ -263,3 +265,38 @@ def test_update_ticket_returns_error_on_config_error(mock_get_client):
     from zendesk_mcp.tools.update_ticket import _update_ticket_data
     result = _update_ticket_data(ticket_id=12345, status="open")
     assert "zendesk-mcp setup" in result
+
+
+@patch("zendesk_mcp.tools.update_ticket.get_client")
+def test_update_ticket_accepts_group_id_and_custom_status_id(mock_get_client):
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+
+    loaded = MagicMock()
+    refreshed = MagicMock()
+    refreshed.id = 12345
+    refreshed.subject = "s"
+    refreshed.description = "d"
+    refreshed.status = "open"
+    refreshed.priority = "normal"
+    refreshed.type = None
+    refreshed.created_at = "2026-05-01T00:00:00Z"
+    refreshed.updated_at = "2026-05-06T00:00:00Z"
+    refreshed.requester_id = 1
+    refreshed.assignee_id = 2
+    refreshed.organization_id = 3
+    refreshed.tags = []
+    refreshed.group_id = 77
+    refreshed.custom_status_id = 88
+    mock_client.tickets.side_effect = [loaded, refreshed]
+
+    from zendesk_mcp.tools.update_ticket import _update_ticket_data
+    result = _update_ticket_data(ticket_id=12345, group_id=77, custom_status_id=88)
+
+    assert loaded.group_id == 77
+    assert loaded.custom_status_id == 88
+    mock_client.tickets.update.assert_called_once_with(loaded)
+
+    parsed = json.loads(result)
+    assert parsed["group_id"] == 77
+    assert parsed["custom_status_id"] == 88
