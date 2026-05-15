@@ -94,7 +94,60 @@ def test_download_zip_returns_file_tree(mock_httpx_get, mock_load_config, tmp_pa
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
-    assert "hello from zip" in result["text_contents"]["readme.txt"]
+    assert result["file_count"] == 1
+    assert result["truncated"] is False
+    assert result["unpack_dir"].endswith("12345/bundle")
+    # Body of files is not inlined — caller reads from unpack_dir
+    assert "text_contents" not in result
+    unpack_dir = Path(result["unpack_dir"])
+    assert (unpack_dir / "readme.txt").read_text() == "hello from zip"
+
+
+@patch("zendesk_mcp.tools.attachments.load_config")
+@patch("zendesk_mcp.tools.attachments.httpx.get")
+def test_download_zip_caps_file_list_when_large(mock_httpx_get, mock_load_config, tmp_path):
+    mock_load_config.return_value = {
+        "oauth_token": "tok",
+        "attachment_cache_dir": str(tmp_path / "attachments"),
+    }
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for i in range(600):
+            zf.writestr(f"f{i:04d}.log", "x")
+    mock_httpx_get.return_value = MagicMock(
+        content=buf.getvalue(),
+        raise_for_status=lambda: None,
+    )
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/big.zip", "big.zip", 12345))
+
+    assert result["file_count"] == 600
+    assert len(result["files"]) == 500
+    assert result["truncated"] is True
+
+
+@patch("zendesk_mcp.tools.attachments.load_config")
+@patch("zendesk_mcp.tools.attachments.httpx.get")
+def test_download_with_dest_dir_uses_override(mock_httpx_get, mock_load_config, tmp_path):
+    mock_load_config.return_value = {
+        "oauth_token": "tok",
+        "attachment_cache_dir": str(tmp_path / "cache"),
+    }
+    mock_httpx_get.return_value = MagicMock(
+        content=b"hello",
+        raise_for_status=lambda: None,
+    )
+
+    override = tmp_path / "workspace" / "bundles" / "12345"
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data(
+        "https://cdn.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+    ))
+
+    assert result["cached_path"] == str(override / "notes.txt")
+    assert not (tmp_path / "cache").exists()
 
 
 @patch("zendesk_mcp.tools.attachments.load_config")
@@ -166,4 +219,7 @@ def test_download_tar_returns_file_tree(mock_httpx_get, mock_load_config, tmp_pa
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
-    assert "hello from tar" in result["text_contents"]["readme.txt"]
+    assert result["file_count"] == 1
+    assert "text_contents" not in result
+    unpack_dir = Path(result["unpack_dir"])
+    assert (unpack_dir / "readme.txt").read_text() == "hello from tar"
