@@ -38,15 +38,27 @@ def _list_attachments_data(ticket_id: int) -> str:
 _TEXT_EXTENSIONS = {".log", ".txt", ".json", ".yaml", ".yml", ".xml", ".csv", ".sh", ".py", ".go", ".md"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
+# Bounds applied to tool response payloads to stay within MCP transport limits.
+_ARCHIVE_FILE_LIST_CAP = 500
+_PDF_TEXT_CAP_BYTES = 500_000
 
-def _download_attachment_data(attachment_url: str, filename: str, ticket_id: int) -> str:
+
+def _download_attachment_data(
+    attachment_url: str,
+    filename: str,
+    ticket_id: int,
+    dest_dir: str | None = None,
+) -> str:
     cfg = load_config()
     token = cfg.get("oauth_token", "")
-    cache_dir = attachment_cache_dir(ticket_id)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    if dest_dir:
+        target_dir = Path(dest_dir).expanduser()
+    else:
+        target_dir = attachment_cache_dir(ticket_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
     # Strip path components from filename to prevent directory traversal
     safe_filename = Path(filename).name
-    dest = cache_dir / safe_filename
+    dest = target_dir / safe_filename
 
     try:
         response = httpx.get(attachment_url, headers={"Authorization": f"Bearer {token}"}, follow_redirects=True)
@@ -93,6 +105,21 @@ def _safe_zip_members(zf: zipfile.ZipFile, unpack_dir: Path) -> list:
     return safe
 
 
+def _archive_summary(dest: Path, unpack_dir: Path) -> str:
+    all_paths = sorted(p for p in unpack_dir.rglob("*") if p.is_file())
+    total_bytes = sum(p.stat().st_size for p in all_paths)
+    file_list = [str(p.relative_to(unpack_dir)) for p in all_paths[:_ARCHIVE_FILE_LIST_CAP]]
+    return json.dumps({
+        "type": "archive",
+        "unpack_dir": str(unpack_dir),
+        "cached_path": str(dest),
+        "file_count": len(all_paths),
+        "total_bytes": total_bytes,
+        "files": file_list,
+        "truncated": len(all_paths) > _ARCHIVE_FILE_LIST_CAP,
+    })
+
+
 def _handle_zip(dest: Path) -> str:
     unpack_dir = dest.parent / dest.stem
     try:
@@ -100,12 +127,7 @@ def _handle_zip(dest: Path) -> str:
             safe_members = _safe_zip_members(zf, unpack_dir)
             for member in safe_members:
                 zf.extract(member, unpack_dir)
-        files = [str(p.relative_to(unpack_dir)) for p in unpack_dir.rglob("*") if p.is_file()]
-        text_contents = {}
-        for p in unpack_dir.rglob("*"):
-            if p.is_file() and p.suffix.lower() in _TEXT_EXTENSIONS and p.stat().st_size < 500_000:
-                text_contents[str(p.relative_to(unpack_dir))] = p.read_text(errors="replace")
-        return json.dumps({"type": "archive", "files": files, "text_contents": text_contents, "unpack_dir": str(unpack_dir)})
+        return _archive_summary(dest, unpack_dir)
     except zipfile.BadZipFile as e:
         return json.dumps({"type": "error", "message": f"Failed to unpack zip: {e}", "cached_path": str(dest)})
 
@@ -119,12 +141,7 @@ def _handle_tar(dest: Path) -> str:
                 if (unpack_dir / m.name).resolve().parts[:len(unpack_dir.resolve().parts)] == unpack_dir.resolve().parts
             ]
             tf.extractall(unpack_dir, members=safe_members)
-        files = [str(p.relative_to(unpack_dir)) for p in unpack_dir.rglob("*") if p.is_file()]
-        text_contents = {}
-        for p in unpack_dir.rglob("*"):
-            if p.is_file() and p.suffix.lower() in _TEXT_EXTENSIONS and p.stat().st_size < 500_000:
-                text_contents[str(p.relative_to(unpack_dir))] = p.read_text(errors="replace")
-        return json.dumps({"type": "archive", "files": files, "text_contents": text_contents, "unpack_dir": str(unpack_dir)})
+        return _archive_summary(dest, unpack_dir)
     except tarfile.TarError as e:
         return json.dumps({"type": "error", "message": f"Failed to unpack tar: {e}", "cached_path": str(dest)})
 
@@ -132,8 +149,25 @@ def _handle_tar(dest: Path) -> str:
 def _handle_pdf(dest: Path) -> str:
     try:
         with pdfplumber.open(dest) as pdf:
-            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        return json.dumps({"type": "text", "content": text, "cached_path": str(dest)})
+            chunks: list[str] = []
+            size = 0
+            truncated = False
+            for page in pdf.pages:
+                page_text = page.extract_text() or ""
+                chunks.append(page_text)
+                size += len(page_text) + 1
+                if size >= _PDF_TEXT_CAP_BYTES:
+                    truncated = True
+                    break
+            text = "\n".join(chunks)
+        if truncated:
+            text = text[:_PDF_TEXT_CAP_BYTES] + "\n[truncated]"
+        return json.dumps({
+            "type": "text",
+            "content": text,
+            "cached_path": str(dest),
+            "truncated": truncated,
+        })
     except Exception as e:
         return json.dumps({"type": "error", "message": f"PDF text extraction failed: {e}", "cached_path": str(dest)})
 
@@ -162,6 +196,11 @@ def register_attachment_tools(mcp) -> None:
         return _list_attachments_data(ticket_id)
 
     @mcp.tool()
-    def zendesk_download_attachment(attachment_url: str, filename: str, ticket_id: int) -> str:
-        """Download a Zendesk attachment and return its contents. ticket_id is required to organize the local cache. Obtain attachment_url and filename from zendesk_list_attachments. Archives are unpacked, PDFs are text-extracted, images are base64-encoded."""
-        return _download_attachment_data(attachment_url, filename, ticket_id)
+    def zendesk_download_attachment(
+        attachment_url: str,
+        filename: str,
+        ticket_id: int,
+        dest_dir: str | None = None,
+    ) -> str:
+        """Download a Zendesk attachment. Obtain attachment_url and filename from zendesk_list_attachments. ticket_id is required for cache organization. Optional dest_dir overrides the default cache location; the file is written there and (for archives) extracted alongside it. Archives return a file list and unpack_dir — read individual files with your normal file tools. PDFs return up to ~500KB of extracted text. Images are base64-encoded."""
+        return _download_attachment_data(attachment_url, filename, ticket_id, dest_dir)
