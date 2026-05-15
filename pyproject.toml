@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zendesk-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "Zendesk MCP server for Claude Code and other MCP clients"
 readme = "README.md"
 license = "Apache-2.0"
