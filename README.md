@@ -235,6 +235,20 @@ python3 -m venv .venv
 
 Tests run on Python 3.10, 3.11, and 3.12 in CI (see `.github/workflows/test.yml`).
 
+### Releasing
+
+Bump the version in `pyproject.toml`, `mcpb/pyproject.toml` (both the version and
+the `zendesk-mcp==` pin), `mcpb/manifest.json`, and `server.json` (both fields),
+then push a `v*` tag. That triggers `.github/workflows/release.yml`, which publishes
+to PyPI, packs the MCPB bundle, publishes `server.json` to the MCP Registry, and
+cuts the GitHub release.
+
+Check the versions agree before tagging — the release fails fast otherwise:
+
+```bash
+python3 .github/scripts/check_versions.py 0.1.5
+```
+
 ## License
 
 [Apache-2.0](LICENSE)
