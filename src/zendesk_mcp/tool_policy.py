@@ -10,11 +10,19 @@ to reply to customers, without changing the code:
 
 Environment variables are added to the config values. A disabled tool is never
 registered, so the model cannot see it or call it.
+
+This fails open: restrictions that cannot be read are not applied. If the config file is
+missing, nothing from it is applied (normal before setup, when the server has no token and
+cannot do anything anyway). If it exists but is not valid JSON, ``load_config()`` also returns
+``{}``, so ``read_only`` / ``disabled_tools`` from it are silently lost; that case is reported
+on stderr below so a restriction that was meant to be in force does not vanish unnoticed. Set
+the environment variables as well when a restriction must hold even if the file is damaged.
 """
+import json
 import os
 import sys
 
-from zendesk_mcp.config import load_config
+from zendesk_mcp.config import config_path, load_config
 
 WRITE_TOOLS = frozenset({
     "zendesk_add_tag",
@@ -36,8 +44,29 @@ def _truthy(value) -> bool:
     return str(value).strip().lower() in _TRUE
 
 
+def _load_policy_config() -> dict:
+    """load_config(), but say so on stderr when an existing file could not be read.
+
+    ``load_config()`` returns ``{}`` for a missing file and for an unparseable one. The first is
+    normal; the second means a restriction written in the file is not being applied.
+    """
+    cfg = load_config()
+    path = config_path()
+    if not cfg and path.exists():
+        try:
+            json.loads(path.read_text())
+        except (OSError, ValueError) as e:
+            # stdout carries the MCP protocol on stdio transport; diagnostics go to stderr.
+            print(
+                f"zendesk-mcp: could not read {path} ({e}); read_only and disabled_tools from "
+                f"the config file are NOT being applied",
+                file=sys.stderr,
+            )
+    return cfg
+
+
 def disabled_tools(cfg: dict | None = None, env: dict | None = None) -> frozenset[str]:
-    cfg = load_config() if cfg is None else cfg
+    cfg = _load_policy_config() if cfg is None else cfg
     env = os.environ if env is None else env
 
     disabled: set[str] = set()

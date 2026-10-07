@@ -17,9 +17,11 @@ def _registered_names(cfg=None, env=None):
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
+def _clean_env(monkeypatch, tmp_path):
     monkeypatch.delenv("ZENDESK_MCP_READ_ONLY", raising=False)
     monkeypatch.delenv("ZENDESK_MCP_DISABLED_TOOLS", raising=False)
+    # Never read the developer's real ~/.config/zendesk-mcp/config.json.
+    monkeypatch.setattr("zendesk_mcp.config.Path.home", lambda: tmp_path)
 
 
 def test_default_registers_everything_including_write_tools():
@@ -80,3 +82,50 @@ def test_disabled_tools_helper_unions_sources():
     )
     assert WRITE_TOOLS <= result
     assert {"zendesk_download_attachment", "zendesk_get_groups"} <= result
+
+
+# --- fail-open reporting: an unreadable config must not lose a restriction silently --------
+
+
+def _write_config(tmp_path, text):
+    path = tmp_path / ".config" / "zendesk-mcp" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(text)
+    return path
+
+
+def test_unparseable_config_is_reported_on_stderr_not_stdout(tmp_path, capsys):
+    path = _write_config(tmp_path, '{"read_only": true,')  # truncated JSON
+
+    result = disabled_tools(env={})
+
+    out = capsys.readouterr()
+    assert result == frozenset()  # fails open, as documented
+    assert out.out == ""
+    assert str(path) in out.err and "could not read" in out.err
+    assert "read_only and disabled_tools" in out.err and "NOT being applied" in out.err
+
+
+def test_environment_still_applies_when_the_config_file_is_unparseable(tmp_path, capsys):
+    _write_config(tmp_path, "not json at all")
+    result = disabled_tools(env={"ZENDESK_MCP_READ_ONLY": "true"})
+    assert WRITE_TOOLS <= result
+    assert "NOT being applied" in capsys.readouterr().err
+
+
+def test_missing_config_file_is_silent(capsys):
+    assert disabled_tools(env={}) == frozenset()
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("text", ["{}", '{"subdomain": "acme", "oauth_token": "t"}'])
+def test_readable_config_without_restrictions_is_silent(tmp_path, capsys, text):
+    _write_config(tmp_path, text)
+    assert disabled_tools(env={}) == frozenset()
+    assert capsys.readouterr().err == ""
+
+
+def test_readable_config_with_read_only_is_applied_silently(tmp_path, capsys):
+    _write_config(tmp_path, '{"read_only": true}')
+    assert WRITE_TOOLS <= disabled_tools(env={})
+    assert capsys.readouterr().err == ""
