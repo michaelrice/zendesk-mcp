@@ -44,6 +44,10 @@ _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 _ARCHIVE_FILE_LIST_CAP = 500
 _PDF_TEXT_CAP_BYTES = 500_000
 
+# Limits on unpacking untrusted archives (zip/tar bombs).
+_ARCHIVE_MAX_MEMBERS = 10_000
+_ARCHIVE_MAX_UNPACKED_BYTES = 256 * 1024 * 1024
+
 
 def _validate_attachment_url(attachment_url: str) -> str | None:
     """Return an error message unless the URL points at the configured Zendesk host.
@@ -169,11 +173,27 @@ def _archive_summary(dest: Path, unpack_dir: Path) -> str:
     })
 
 
+def _archive_limit_error(count: int, total_bytes: int) -> str | None:
+    if count > _ARCHIVE_MAX_MEMBERS:
+        return f"Archive has {count} entries; limit is {_ARCHIVE_MAX_MEMBERS}."
+    if total_bytes > _ARCHIVE_MAX_UNPACKED_BYTES:
+        return (
+            f"Archive unpacks to {total_bytes} bytes; "
+            f"limit is {_ARCHIVE_MAX_UNPACKED_BYTES}."
+        )
+    return None
+
+
 def _handle_zip(dest: Path) -> str:
     unpack_dir = dest.parent / dest.stem
     try:
         with zipfile.ZipFile(dest) as zf:
             safe_members = _safe_zip_members(zf, unpack_dir)
+            limit_error = _archive_limit_error(
+                len(safe_members), sum(m.file_size for m in safe_members)
+            )
+            if limit_error:
+                return json.dumps({"type": "error", "message": limit_error, "cached_path": str(dest)})
             for member in safe_members:
                 zf.extract(member, unpack_dir)
         return _archive_summary(dest, unpack_dir)
@@ -181,15 +201,38 @@ def _handle_zip(dest: Path) -> str:
         return json.dumps({"type": "error", "message": f"Failed to unpack zip: {e}", "cached_path": str(dest)})
 
 
+def _safe_tar_members(tf: tarfile.TarFile, unpack_dir: Path) -> list:
+    """Regular files and directories that stay inside unpack_dir.
+
+    Symlinks, hardlinks and device nodes are dropped: a link member can point outside
+    unpack_dir, and a later member written "through" it would escape. The path check
+    below runs before extraction, so it cannot see links that extraction would create.
+    """
+    root = unpack_dir.resolve()
+    safe = []
+    for member in tf.getmembers():
+        if not (member.isreg() or member.isdir()):
+            continue
+        member_path = (unpack_dir / member.name).resolve()
+        if member_path.parts[:len(root.parts)] == root.parts:
+            safe.append(member)
+    return safe
+
+
 def _handle_tar(dest: Path) -> str:
     unpack_dir = dest.parent / dest.stem.replace(".tar", "")
     try:
         with tarfile.open(dest) as tf:
-            safe_members = [
-                m for m in tf.getmembers()
-                if (unpack_dir / m.name).resolve().parts[:len(unpack_dir.resolve().parts)] == unpack_dir.resolve().parts
-            ]
-            tf.extractall(unpack_dir, members=safe_members)
+            safe_members = _safe_tar_members(tf, unpack_dir)
+            limit_error = _archive_limit_error(
+                len(safe_members), sum(m.size for m in safe_members)
+            )
+            if limit_error:
+                return json.dumps({"type": "error", "message": limit_error, "cached_path": str(dest)})
+            if hasattr(tarfile, "data_filter"):
+                tf.extractall(unpack_dir, members=safe_members, filter="data")
+            else:  # pragma: no cover - interpreters without extraction filters
+                tf.extractall(unpack_dir, members=safe_members)
         return _archive_summary(dest, unpack_dir)
     except tarfile.TarError as e:
         return json.dumps({"type": "error", "message": f"Failed to unpack tar: {e}", "cached_path": str(dest)})

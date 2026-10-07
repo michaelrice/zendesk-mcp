@@ -294,3 +294,98 @@ def test_download_requires_configured_subdomain(mock_request, _cfg):
     assert result["type"] == "error"
     assert "zendesk-mcp setup" in result["message"]
     mock_request.assert_not_called()
+
+
+def _tar_bytes(entries):
+    import io
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for info, data in entries:
+            tf.addfile(info, io.BytesIO(data) if data is not None else None)
+    return buf.getvalue()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_drops_symlink_escape(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tarfile.TarInfo(name="link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = str(outside)
+    payload = tarfile.TarInfo(name="link/pwned.txt")
+    payload.size = 4
+    mock_request.return_value = MagicMock(
+        content=_tar_bytes([(link, None), (payload, b"evil")]),
+        raise_for_status=lambda: None,
+    )
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/x.tar.gz", "x.tar.gz", 12345))
+
+    assert not (outside / "pwned.txt").exists()
+    assert list(outside.iterdir()) == []
+    assert result["type"] in {"archive", "error"}
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_drops_hardlink_and_dotdot_members(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    hard = tarfile.TarInfo(name="hard")
+    hard.type = tarfile.LNKTYPE
+    hard.linkname = "/etc/passwd"
+    dotdot = tarfile.TarInfo(name="../escaped.txt")
+    dotdot.size = 1
+    ok = tarfile.TarInfo(name="ok.txt")
+    ok.size = 2
+    mock_request.return_value = MagicMock(
+        content=_tar_bytes([(hard, None), (dotdot, b"x"), (ok, b"ok")]),
+        raise_for_status=lambda: None,
+    )
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/x.tar.gz", "x.tar.gz", 12345))
+
+    assert result["type"] == "archive"
+    assert result["files"] == ["ok.txt"]
+    assert not (tmp_path / "attachments" / "escaped.txt").exists()
+
+
+@patch("zendesk_mcp.tools.attachments._ARCHIVE_MAX_UNPACKED_BYTES", 10)
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_zip_over_size_limit_is_refused(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("big.txt", "x" * 100)
+    mock_request.return_value = MagicMock(content=buf.getvalue(), raise_for_status=lambda: None)
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/b.zip", "b.zip", 12345))
+
+    assert result["type"] == "error"
+    assert "limit" in result["message"]
+    assert not (tmp_path / "attachments" / "12345" / "b").exists()
+
+
+@patch("zendesk_mcp.tools.attachments._ARCHIVE_MAX_MEMBERS", 2)
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_over_member_limit_is_refused(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    entries = []
+    for i in range(3):
+        info = tarfile.TarInfo(name=f"f{i}.txt")
+        info.size = 1
+        entries.append((info, b"x"))
+    mock_request.return_value = MagicMock(content=_tar_bytes(entries), raise_for_status=lambda: None)
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/t.tar.gz", "t.tar.gz", 12345))
+
+    assert result["type"] == "error"
+    assert "entries" in result["message"]
