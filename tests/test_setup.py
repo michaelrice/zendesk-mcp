@@ -119,3 +119,34 @@ def test_callback_ignores_a_code_without_the_expected_state_and_keeps_listening(
     finally:
         served.join(timeout=10)
         server.server_close()
+
+
+# --- credential prompts ------------------------------------------------------
+
+
+@patch("zendesk_mcp.setup.getpass")
+@patch("zendesk_mcp.setup.input")
+def test_collect_credentials_reads_the_secret_without_echo(mock_input, mock_getpass):
+    from zendesk_mcp.setup import _collect_credentials
+    mock_input.side_effect = ["acme", "cid"]
+    mock_getpass.return_value = "s3cret"
+
+    assert _collect_credentials({}) == ("acme", "cid", "s3cret")
+    prompts = [c.args[0] for c in mock_input.call_args_list]
+    assert not any("secret" in p.lower() for p in prompts)
+    mock_getpass.assert_called_once()
+
+
+@patch("zendesk_mcp.setup.getpass")
+@patch("zendesk_mcp.setup.input")
+def test_collect_credentials_prefers_environment_and_prompts_for_nothing(mock_input, mock_getpass):
+    from zendesk_mcp.setup import _collect_credentials
+    env = {
+        "ZENDESK_SUBDOMAIN": "acme",
+        "ZENDESK_CLIENT_ID": "cid",
+        "ZENDESK_CLIENT_SECRET": "s3cret",
+    }
+
+    assert _collect_credentials(env) == ("acme", "cid", "s3cret")
+    mock_input.assert_not_called()
+    mock_getpass.assert_not_called()
