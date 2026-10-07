@@ -20,3 +20,17 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run tests
         run: pytest
+
+  # server.py imports the SDK with a fallback for mcp 1.x. Run the suite on a real 1.x
+  # install so a change that only works on 2.x fails here instead of for users on 1.x.
+  pytest-mcp1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package with dev extras on mcp 1.x
+        run: pip install -e ".[dev]" "mcp<2"
+      - name: Run tests
+        run: pytest
