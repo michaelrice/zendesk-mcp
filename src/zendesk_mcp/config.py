@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 from pathlib import Path
 
 
@@ -15,10 +17,29 @@ def load_config(path: Path | None = None) -> dict:
 
 
 def save_config(data: dict, path: Path | None = None) -> None:
+    """Write the config atomically, readable only by the owner from the moment it exists.
+
+    The file holds OAuth tokens and the client secret. Writing it with write_text() and
+    chmod-ing afterwards leaves a window where it is world-readable under a permissive
+    umask, and a crash mid-write leaves a truncated file that load_config() reads as empty,
+    losing the rotated refresh token. mkstemp creates the file 0600, and os.replace swaps it
+    in as a single step.
+    """
     resolved = path or config_path()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(json.dumps(data, indent=2) + "\n")
-    resolved.chmod(0o600)
+    resolved.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp_name = tempfile.mkstemp(dir=resolved.parent, prefix=f"{resolved.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as tmp:
+            tmp.write(json.dumps(data, indent=2) + "\n")
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_name, resolved)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def attachment_cache_dir(ticket_id: int, config_file: Path | None = None) -> Path:
