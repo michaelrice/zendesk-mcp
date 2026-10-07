@@ -1,4 +1,5 @@
 import json
+import pytest
 import zipfile
 import tarfile
 import base64
@@ -6,6 +7,12 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from tests.conftest import make_mock_attachment, make_mock_comment
 from zendesk_mcp.client import ConfigError
+
+
+@pytest.fixture(autouse=True)
+def _configured_subdomain():
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value={"subdomain": "acme"}):
+        yield
 
 
 def _client_with_comments(comments):
@@ -16,8 +23,8 @@ def _client_with_comments(comments):
 
 @patch("zendesk_mcp.tools.attachments.get_client")
 def test_list_attachments_aggregates_across_comments(mock_get_client):
-    att1 = make_mock_attachment("debug.log", "text/plain", 512, "https://cdn.zendesk.com/1")
-    att2 = make_mock_attachment("bundle.zip", "application/zip", 4096, "https://cdn.zendesk.com/2")
+    att1 = make_mock_attachment("debug.log", "text/plain", 512, "https://acme.zendesk.com/1")
+    att2 = make_mock_attachment("bundle.zip", "application/zip", 4096, "https://acme.zendesk.com/2")
     c1 = make_mock_comment(comment_id=1, attachments=[att1])
     c2 = make_mock_comment(comment_id=2, attachments=[att2])
     mock_get_client.return_value = _client_with_comments([c1, c2])
@@ -63,7 +70,7 @@ def test_download_text_file_returns_content(mock_httpx_get, mock_cache_dir, tmp_
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/debug.log", "debug.log", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/debug.log", "debug.log", 12345))
 
     assert result["type"] == "text"
     assert "disk full" in result["content"]
@@ -84,7 +91,7 @@ def test_download_zip_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/bundle.zip", "bundle.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/bundle.zip", "bundle.zip", 12345))
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
@@ -112,7 +119,7 @@ def test_download_zip_caps_file_list_when_large(mock_httpx_get, mock_cache_dir, 
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/big.zip", "big.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/big.zip", "big.zip", 12345))
 
     assert result["file_count"] == 600
     assert len(result["files"]) == 500
@@ -129,13 +136,65 @@ def test_download_with_dest_dir_uses_override(mock_httpx_get, mock_cache_dir, tm
     )
 
     override = tmp_path / "workspace" / "bundles" / "12345"
+    cfg = {"subdomain": "acme", "attachment_allowed_dest_dirs": [str(tmp_path / "workspace")]}
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value=cfg):
+        result = json.loads(_download_attachment_data(
+            "https://acme.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+        ))
+
+    assert result["cached_path"] == str(override.resolve() / "notes.txt")
+    assert not (tmp_path / "cache").exists()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_dest_dir_outside_allowed_dirs(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    victim = tmp_path / "home" / ".ssh"
+
     from zendesk_mcp.tools.attachments import _download_attachment_data
     result = json.loads(_download_attachment_data(
-        "https://cdn.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+        "https://acme.zendesk.com/a.txt", "authorized_keys", 12345, str(victim)
     ))
 
-    assert result["cached_path"] == str(override / "notes.txt")
-    assert not (tmp_path / "cache").exists()
+    assert result["type"] == "error"
+    assert "attachment_allowed_dest_dirs" in result["message"]
+    mock_request.assert_not_called()
+    assert not victim.exists()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_dest_dir_that_escapes_allowed_dir_via_dotdot(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    cfg = {"subdomain": "acme", "attachment_allowed_dest_dirs": [str(tmp_path / "workspace")]}
+    sneaky = tmp_path / "workspace" / ".." / "elsewhere"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value=cfg):
+        result = json.loads(_download_attachment_data(
+            "https://acme.zendesk.com/a.txt", "a.txt", 12345, str(sneaky)
+        ))
+
+    assert result["type"] == "error"
+    mock_request.assert_not_called()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_allows_dest_dir_inside_cache(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    mock_request.return_value = MagicMock(content=b"hi", raise_for_status=lambda: None)
+    inside = tmp_path / "cache" / "custom"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data(
+        "https://acme.zendesk.com/a.txt", "a.txt", 12345, str(inside)
+    ))
+
+    assert result["type"] == "text"
+    assert (inside / "a.txt").read_text() == "hi"
 
 
 @patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
@@ -153,7 +212,7 @@ def test_download_image_returns_base64(mock_httpx_get, mock_cache_dir, tmp_path)
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/screen.png", "screen.png", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/screen.png", "screen.png", 12345))
 
     assert result["type"] == "image"
     assert result["encoding"] == "base64"
@@ -170,7 +229,7 @@ def test_download_corrupt_zip_returns_error_not_exception(mock_httpx_get, mock_c
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/bad.zip", "bad.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/bad.zip", "bad.zip", 12345))
 
     assert result["type"] == "error"
     assert "unpack" in result["message"].lower() or "zip" in result["message"].lower()
@@ -194,7 +253,7 @@ def test_download_tar_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/logs.tar.gz", "logs.tar.gz", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/logs.tar.gz", "logs.tar.gz", 12345))
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
@@ -202,3 +261,131 @@ def test_download_tar_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     assert "text_contents" not in result
     unpack_dir = Path(result["unpack_dir"])
     assert (unpack_dir / "readme.txt").read_text() == "hello from tar"
+
+
+@pytest.mark.parametrize("url", [
+    "https://attacker.example/steal",
+    "http://acme.zendesk.com/attachments/token/x/?name=a.txt",
+    "https://acme.zendesk.com.attacker.example/a.txt",
+    "https://other.zendesk.com/attachments/token/x/?name=a.txt",
+    "https://acme.zendesk.com@attacker.example/a.txt",
+    "file:///etc/passwd",
+])
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_url_outside_zendesk_host(mock_request, mock_cache_dir, url, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data(url, "a.txt", 12345))
+
+    assert result["type"] == "error"
+    assert "acme.zendesk.com" in result["message"]
+    mock_request.assert_not_called()
+    assert not (tmp_path / "attachments").exists()
+
+
+@patch("zendesk_mcp.tools.attachments.load_config", return_value={})
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_requires_configured_subdomain(mock_request, _cfg):
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/a.txt", "a.txt", 12345))
+
+    assert result["type"] == "error"
+    assert "zendesk-mcp setup" in result["message"]
+    mock_request.assert_not_called()
+
+
+def _tar_bytes(entries):
+    import io
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for info, data in entries:
+            tf.addfile(info, io.BytesIO(data) if data is not None else None)
+    return buf.getvalue()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_drops_symlink_escape(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tarfile.TarInfo(name="link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = str(outside)
+    payload = tarfile.TarInfo(name="link/pwned.txt")
+    payload.size = 4
+    mock_request.return_value = MagicMock(
+        content=_tar_bytes([(link, None), (payload, b"evil")]),
+        raise_for_status=lambda: None,
+    )
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/x.tar.gz", "x.tar.gz", 12345))
+
+    assert not (outside / "pwned.txt").exists()
+    assert list(outside.iterdir()) == []
+    assert result["type"] in {"archive", "error"}
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_drops_hardlink_and_dotdot_members(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    hard = tarfile.TarInfo(name="hard")
+    hard.type = tarfile.LNKTYPE
+    hard.linkname = "/etc/passwd"
+    dotdot = tarfile.TarInfo(name="../escaped.txt")
+    dotdot.size = 1
+    ok = tarfile.TarInfo(name="ok.txt")
+    ok.size = 2
+    mock_request.return_value = MagicMock(
+        content=_tar_bytes([(hard, None), (dotdot, b"x"), (ok, b"ok")]),
+        raise_for_status=lambda: None,
+    )
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/x.tar.gz", "x.tar.gz", 12345))
+
+    assert result["type"] == "archive"
+    assert result["files"] == ["ok.txt"]
+    assert not (tmp_path / "attachments" / "escaped.txt").exists()
+
+
+@patch("zendesk_mcp.tools.attachments._ARCHIVE_MAX_UNPACKED_BYTES", 10)
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_zip_over_size_limit_is_refused(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("big.txt", "x" * 100)
+    mock_request.return_value = MagicMock(content=buf.getvalue(), raise_for_status=lambda: None)
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/b.zip", "b.zip", 12345))
+
+    assert result["type"] == "error"
+    assert "limit" in result["message"]
+    assert not (tmp_path / "attachments" / "12345" / "b").exists()
+
+
+@patch("zendesk_mcp.tools.attachments._ARCHIVE_MAX_MEMBERS", 2)
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_tar_over_member_limit_is_refused(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+    entries = []
+    for i in range(3):
+        info = tarfile.TarInfo(name=f"f{i}.txt")
+        info.size = 1
+        entries.append((info, b"x"))
+    mock_request.return_value = MagicMock(content=_tar_bytes(entries), raise_for_status=lambda: None)
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/t.tar.gz", "t.tar.gz", 12345))
+
+    assert result["type"] == "error"
+    assert "entries" in result["message"]
