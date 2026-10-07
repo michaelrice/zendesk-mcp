@@ -225,6 +225,20 @@ This is opt-in. Enable it by either answering "y" to the prompt during `.venv/bi
 
 When the flag is absent or false, the resource is not registered, keeping the server's resource list empty for instances without a Help Center.
 
+## Optional: downloading attachments outside the cache
+
+`zendesk_download_attachment` writes files to `~/.cache/zendesk-mcp/attachments/<ticket_id>/` by default (configurable via `attachment_cache_dir`). The `dest_dir` argument can redirect a download elsewhere, but because attachment contents are controlled by whoever wrote the ticket, the tool only accepts a `dest_dir` inside the cache or inside a directory you have explicitly allowed. Add the directories you want to permit to `~/.config/zendesk-mcp/config.json`:
+
+```json
+{
+  "attachment_allowed_dest_dirs": ["/home/me/work/support_bundles"]
+}
+```
+
+Paths are resolved before the check, so `..` segments and symlinks cannot escape an allowed directory. Any `dest_dir` outside the allowed set is refused before the download starts.
+
+The download URL itself must be an `https` URL on `<subdomain>.zendesk.com` for your configured subdomain; the tool refuses anything else so the OAuth token is never sent to another host. Archives are limited to 10,000 entries and 256 MiB unpacked, and tar members that are not regular files or directories are skipped.
+
 ## Development
 
 ```bash
