@@ -11,6 +11,9 @@ mcp = FastMCP("zendesk-mcp")
 
 
 def register_all(mcp) -> None:
+    from zendesk_mcp.tool_policy import apply_tool_policy
+
+    policy = mcp = apply_tool_policy(mcp)
     from zendesk_mcp.tools.ticket import register_ticket_tools
     from zendesk_mcp.tools.comments import register_comments_tools
     from zendesk_mcp.tools.attachments import register_attachment_tools
@@ -50,6 +53,7 @@ def register_all(mcp) -> None:
     register_organization_tools(mcp)
     register_custom_status_tools(mcp)
     register_prompts(mcp)
+    policy.report_unknown()
 
 
 def main() -> None:
