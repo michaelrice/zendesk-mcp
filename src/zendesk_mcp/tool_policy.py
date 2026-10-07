@@ -94,13 +94,30 @@ class _ToolPolicy:
         for name in sorted(self._disabled - self.skipped):
             print(f"zendesk-mcp: ignoring unknown tool in disabled list: {name}", file=sys.stderr)
 
+    def _skip(self, tool_name: str) -> bool:
+        if tool_name in self._disabled:
+            self.skipped.add(tool_name)
+            return True
+        return False
+
     def tool(self, *args, **kwargs):
+        """Register a tool unless it is disabled, however it is declared.
+
+        The name checked is the one the SDK would register: an explicit ``name`` (first positional
+        argument or keyword), else the function's name. Handles ``@mcp.tool()``,
+        ``@mcp.tool(name="...")``, ``@mcp.tool("...")`` and the bare ``@mcp.tool`` form.
+        """
+        if args and callable(args[0]):  # bare @mcp.tool: the function is the first argument
+            fn = args[0]
+            if self._skip(kwargs.get("name") or fn.__name__):
+                return fn
+            return self._mcp.tool(*args, **kwargs)
+
+        explicit = args[0] if args and isinstance(args[0], str) else kwargs.get("name")
         register = self._mcp.tool(*args, **kwargs)
 
         def decorator(fn):
-            tool_name = kwargs.get("name") or fn.__name__
-            if tool_name in self._disabled:
-                self.skipped.add(tool_name)
+            if self._skip(explicit or fn.__name__):
                 return fn
             return register(fn)
 
