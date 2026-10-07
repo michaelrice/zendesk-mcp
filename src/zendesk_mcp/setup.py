@@ -1,3 +1,5 @@
+import hmac
+import secrets
 import sys
 import threading
 import time
@@ -20,14 +22,68 @@ ACCESS_TOKEN_TTL_SECONDS = 86400       # 24 hours
 REFRESH_TOKEN_TTL_SECONDS = 7776000    # 90 days
 
 
-def _extract_code(raw: str) -> str | None:
+def _state_matches(params: dict, expected_state: str) -> bool:
+    received = params.get("state", [""])[0]
+    return hmac.compare_digest(received.encode(), expected_state.encode())
+
+
+def _extract_code(raw: str, expected_state: str | None = None) -> str | None:
+    """Pull the authorization code out of a pasted redirect URL or bare code.
+
+    A pasted URL must carry the ``state`` we sent; a bare code has nowhere to carry one,
+    so it is accepted as typed.
+    """
     raw = raw.strip()
     if not raw:
         return None
     if "?" in raw or raw.startswith("http"):
         params = parse_qs(urlparse(raw).query)
+        if expected_state is not None and not _state_matches(params, expected_state):
+            return None
         return params.get("code", [None])[0]
     return raw
+
+
+def _authorization_url(subdomain: str, client_id: str, state: str) -> str:
+    return (
+        f"https://{subdomain}.zendesk.com/oauth/authorizations/new"
+        f"?response_type=code"
+        f"&redirect_uri={quote(REDIRECT_URI, safe='')}"
+        f"&client_id={quote(client_id, safe='')}"
+        f"&scope=read%20write"
+        f"&state={quote(state, safe='')}"
+    )
+
+
+def _make_callback_handler(code_holder: dict, expected_state: str):
+    """Request handler that accepts the authorization code only with the matching state.
+
+    Without the check, anything that can reach localhost:8787 during setup (another local
+    process, or a web page the user has open) could deliver its own authorization code and
+    have the user's session authorized as someone else.
+    """
+
+    class CallbackHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            params = parse_qs(urlparse(self.path).query)
+            if "code" in params and _state_matches(params, expected_state):
+                code_holder["code"] = params["code"][0]
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Authorization successful! You can close this tab.")
+            elif "code" in params:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"State mismatch. Authorization code ignored.")
+            else:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"No authorization code received.")
+
+        def log_message(self, format, *args):
+            pass
+
+    return CallbackHandler
 
 
 def _exchange_code(
@@ -105,31 +161,11 @@ def run_setup() -> None:
     else:
         client_secret = input("  OAuth client_secret: ").strip()
 
-    auth_url = (
-        f"https://{subdomain}.zendesk.com/oauth/authorizations/new"
-        f"?response_type=code"
-        f"&redirect_uri={quote(REDIRECT_URI, safe='')}"
-        f"&client_id={quote(client_id, safe='')}"
-        f"&scope=read%20write"
-    )
+    state = secrets.token_urlsafe(32)
+    auth_url = _authorization_url(subdomain, client_id, state)
 
     code_holder: dict = {"code": None}
-
-    class CallbackHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            params = parse_qs(urlparse(self.path).query)
-            if "code" in params:
-                code_holder["code"] = params["code"][0]
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"Authorization successful! You can close this tab.")
-            else:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b"No authorization code received.")
-
-        def log_message(self, format, *args):
-            pass
+    CallbackHandler = _make_callback_handler(code_holder, state)
 
     server = HTTPServer(("localhost", CALLBACK_PORT), CallbackHandler)
     server.timeout = 1
@@ -155,7 +191,7 @@ def run_setup() -> None:
     if code_holder["code"] is None:
         print("  Callback not received automatically.")
         pasted = input("  Paste the full redirect URL (or just the code value) here: ").strip()
-        code_holder["code"] = _extract_code(pasted)
+        code_holder["code"] = _extract_code(pasted, state)
 
     if not code_holder["code"]:
         print("\n  No authorization code received. Setup failed.\n")
