@@ -129,6 +129,21 @@ Then add the read tools to `permissions.allow` in `~/.claude/settings.json` to a
 
 Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_ticket_status`, `zendesk_assign_ticket`, `zendesk_create_ticket`, `zendesk_update_ticket`, `zendesk_log_time`, `zendesk_add_tag`, `zendesk_remove_tag`, `zendesk_apply_macro`) are intentionally not in the default allow-list — Claude will prompt you per call.
 
+## Restricting tools
+
+Every tool is enabled by default. To narrow what a deployment can do, for example where
+ticket text is written by customers and the agent should not be able to reply to them, set
+either of these in `~/.config/zendesk-mcp/config.json` or in the server's environment. Values
+from both are combined.
+
+| Config key | Environment variable | Effect |
+|---|---|---|
+| `"read_only": true` | `ZENDESK_MCP_READ_ONLY=true` | Registers no write tools (comments, notes, status, assignment, create/update, tags, macros, time logging) |
+| `"disabled_tools": ["zendesk_post_comment"]` | `ZENDESK_MCP_DISABLED_TOOLS=zendesk_post_comment,zendesk_apply_macro` | Does not register the named tools |
+
+A disabled tool is never registered, so the model cannot see or call it. Names that match no
+tool are reported on stderr.
+
 ## Tools
 
 ### Tickets
