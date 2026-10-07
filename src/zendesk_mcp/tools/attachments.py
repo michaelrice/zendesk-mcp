@@ -64,6 +64,27 @@ def _validate_attachment_url(attachment_url: str) -> str | None:
     return None
 
 
+def _resolve_dest_dir(dest_dir: str, ticket_id: int) -> tuple[Path | None, str | None]:
+    """Resolve a caller-supplied dest_dir, or explain why it is not allowed.
+
+    The bytes written there come from a customer-controlled attachment, so an
+    unrestricted dest_dir is an arbitrary file write. Only the attachment cache and
+    directories listed under ``attachment_allowed_dest_dirs`` in the config are accepted.
+    """
+    target = Path(dest_dir).expanduser().resolve()
+    cache_root = attachment_cache_dir(ticket_id).parent.expanduser().resolve()
+    allowed = [cache_root] + [
+        Path(p).expanduser().resolve()
+        for p in (load_config().get("attachment_allowed_dest_dirs") or [])
+    ]
+    if any(target == root or root in target.parents for root in allowed):
+        return target, None
+    return None, (
+        "dest_dir is not allowed. Use the default cache location, or add the directory "
+        "to 'attachment_allowed_dest_dirs' in ~/.config/zendesk-mcp/config.json."
+    )
+
+
 def _download_attachment_data(
     attachment_url: str,
     filename: str,
@@ -74,7 +95,9 @@ def _download_attachment_data(
     if url_error:
         return json.dumps({"type": "error", "message": url_error})
     if dest_dir:
-        target_dir = Path(dest_dir).expanduser()
+        target_dir, dest_error = _resolve_dest_dir(dest_dir, ticket_id)
+        if dest_error:
+            return json.dumps({"type": "error", "message": dest_error})
     else:
         target_dir = attachment_cache_dir(ticket_id)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -228,5 +251,5 @@ def register_attachment_tools(mcp) -> None:
         ticket_id: int,
         dest_dir: str | None = None,
     ) -> str:
-        """Download a Zendesk attachment. Obtain attachment_url and filename from zendesk_list_attachments. ticket_id is required for cache organization. Optional dest_dir overrides the default cache location; the file is written there and (for archives) extracted alongside it. Archives return a file list and unpack_dir — read individual files with your normal file tools. PDFs return up to ~500KB of extracted text. Images are base64-encoded."""
+        """Download a Zendesk attachment. Obtain attachment_url and filename from zendesk_list_attachments. ticket_id is required for cache organization. Optional dest_dir overrides the default cache location (it must be inside the cache or a directory listed in 'attachment_allowed_dest_dirs' in the config); the file is written there and (for archives) extracted alongside it. Archives return a file list and unpack_dir — read individual files with your normal file tools. PDFs return up to ~500KB of extracted text. Images are base64-encoded."""
         return _download_attachment_data(attachment_url, filename, ticket_id, dest_dir)

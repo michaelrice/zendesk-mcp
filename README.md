@@ -142,7 +142,7 @@ Write tools (`zendesk_post_comment`, `zendesk_post_internal_note`, `zendesk_set_
 | `zendesk_update_ticket` | Update one or more fields on an existing ticket (status, priority, subject, type, assignee_id, requester_id, group_id, custom_status_id, tags, custom_fields, due_at) |
 | `zendesk_get_comments` | Get the conversation thread on a ticket |
 | `zendesk_list_attachments` | List attachments on a ticket |
-| `zendesk_download_attachment` | Download an attachment to a local cache directory |
+| `zendesk_download_attachment` | Download an attachment to a local cache directory. The URL must be on your Zendesk host, and `dest_dir` must be inside the cache or a directory listed in `attachment_allowed_dest_dirs` in the config |
 | `zendesk_ticket_to_gitlab_context` | Format a ticket and its conversation as a Markdown issue draft |
 | `zendesk_post_comment` | Post a public reply on a ticket |
 | `zendesk_post_internal_note` | Post an agent-only internal note on a ticket |

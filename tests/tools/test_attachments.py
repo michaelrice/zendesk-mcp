@@ -136,13 +136,65 @@ def test_download_with_dest_dir_uses_override(mock_httpx_get, mock_cache_dir, tm
     )
 
     override = tmp_path / "workspace" / "bundles" / "12345"
+    cfg = {"subdomain": "acme", "attachment_allowed_dest_dirs": [str(tmp_path / "workspace")]}
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value=cfg):
+        result = json.loads(_download_attachment_data(
+            "https://acme.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+        ))
+
+    assert result["cached_path"] == str(override.resolve() / "notes.txt")
+    assert not (tmp_path / "cache").exists()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_dest_dir_outside_allowed_dirs(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    victim = tmp_path / "home" / ".ssh"
+
     from zendesk_mcp.tools.attachments import _download_attachment_data
     result = json.loads(_download_attachment_data(
-        "https://acme.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+        "https://acme.zendesk.com/a.txt", "authorized_keys", 12345, str(victim)
     ))
 
-    assert result["cached_path"] == str(override / "notes.txt")
-    assert not (tmp_path / "cache").exists()
+    assert result["type"] == "error"
+    assert "attachment_allowed_dest_dirs" in result["message"]
+    mock_request.assert_not_called()
+    assert not victim.exists()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_dest_dir_that_escapes_allowed_dir_via_dotdot(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    cfg = {"subdomain": "acme", "attachment_allowed_dest_dirs": [str(tmp_path / "workspace")]}
+    sneaky = tmp_path / "workspace" / ".." / "elsewhere"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value=cfg):
+        result = json.loads(_download_attachment_data(
+            "https://acme.zendesk.com/a.txt", "a.txt", 12345, str(sneaky)
+        ))
+
+    assert result["type"] == "error"
+    mock_request.assert_not_called()
+
+
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_allows_dest_dir_inside_cache(mock_request, mock_cache_dir, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "cache" / "12345"
+    mock_request.return_value = MagicMock(content=b"hi", raise_for_status=lambda: None)
+    inside = tmp_path / "cache" / "custom"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data(
+        "https://acme.zendesk.com/a.txt", "a.txt", 12345, str(inside)
+    ))
+
+    assert result["type"] == "text"
+    assert (inside / "a.txt").read_text() == "hi"
 
 
 @patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
