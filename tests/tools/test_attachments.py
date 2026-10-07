@@ -1,4 +1,5 @@
 import json
+import pytest
 import zipfile
 import tarfile
 import base64
@@ -6,6 +7,12 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from tests.conftest import make_mock_attachment, make_mock_comment
 from zendesk_mcp.client import ConfigError
+
+
+@pytest.fixture(autouse=True)
+def _configured_subdomain():
+    with patch("zendesk_mcp.tools.attachments.load_config", return_value={"subdomain": "acme"}):
+        yield
 
 
 def _client_with_comments(comments):
@@ -16,8 +23,8 @@ def _client_with_comments(comments):
 
 @patch("zendesk_mcp.tools.attachments.get_client")
 def test_list_attachments_aggregates_across_comments(mock_get_client):
-    att1 = make_mock_attachment("debug.log", "text/plain", 512, "https://cdn.zendesk.com/1")
-    att2 = make_mock_attachment("bundle.zip", "application/zip", 4096, "https://cdn.zendesk.com/2")
+    att1 = make_mock_attachment("debug.log", "text/plain", 512, "https://acme.zendesk.com/1")
+    att2 = make_mock_attachment("bundle.zip", "application/zip", 4096, "https://acme.zendesk.com/2")
     c1 = make_mock_comment(comment_id=1, attachments=[att1])
     c2 = make_mock_comment(comment_id=2, attachments=[att2])
     mock_get_client.return_value = _client_with_comments([c1, c2])
@@ -63,7 +70,7 @@ def test_download_text_file_returns_content(mock_httpx_get, mock_cache_dir, tmp_
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/debug.log", "debug.log", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/debug.log", "debug.log", 12345))
 
     assert result["type"] == "text"
     assert "disk full" in result["content"]
@@ -84,7 +91,7 @@ def test_download_zip_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/bundle.zip", "bundle.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/bundle.zip", "bundle.zip", 12345))
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
@@ -112,7 +119,7 @@ def test_download_zip_caps_file_list_when_large(mock_httpx_get, mock_cache_dir, 
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/big.zip", "big.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/big.zip", "big.zip", 12345))
 
     assert result["file_count"] == 600
     assert len(result["files"]) == 500
@@ -131,7 +138,7 @@ def test_download_with_dest_dir_uses_override(mock_httpx_get, mock_cache_dir, tm
     override = tmp_path / "workspace" / "bundles" / "12345"
     from zendesk_mcp.tools.attachments import _download_attachment_data
     result = json.loads(_download_attachment_data(
-        "https://cdn.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
+        "https://acme.zendesk.com/notes.txt", "notes.txt", 12345, str(override)
     ))
 
     assert result["cached_path"] == str(override / "notes.txt")
@@ -153,7 +160,7 @@ def test_download_image_returns_base64(mock_httpx_get, mock_cache_dir, tmp_path)
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/screen.png", "screen.png", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/screen.png", "screen.png", 12345))
 
     assert result["type"] == "image"
     assert result["encoding"] == "base64"
@@ -170,7 +177,7 @@ def test_download_corrupt_zip_returns_error_not_exception(mock_httpx_get, mock_c
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/bad.zip", "bad.zip", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/bad.zip", "bad.zip", 12345))
 
     assert result["type"] == "error"
     assert "unpack" in result["message"].lower() or "zip" in result["message"].lower()
@@ -194,7 +201,7 @@ def test_download_tar_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     )
 
     from zendesk_mcp.tools.attachments import _download_attachment_data
-    result = json.loads(_download_attachment_data("https://cdn.zendesk.com/logs.tar.gz", "logs.tar.gz", 12345))
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/logs.tar.gz", "logs.tar.gz", 12345))
 
     assert result["type"] == "archive"
     assert any("readme.txt" in f for f in result["files"])
@@ -202,3 +209,36 @@ def test_download_tar_returns_file_tree(mock_httpx_get, mock_cache_dir, tmp_path
     assert "text_contents" not in result
     unpack_dir = Path(result["unpack_dir"])
     assert (unpack_dir / "readme.txt").read_text() == "hello from tar"
+
+
+@pytest.mark.parametrize("url", [
+    "https://attacker.example/steal",
+    "http://acme.zendesk.com/attachments/token/x/?name=a.txt",
+    "https://acme.zendesk.com.attacker.example/a.txt",
+    "https://other.zendesk.com/attachments/token/x/?name=a.txt",
+    "https://acme.zendesk.com@attacker.example/a.txt",
+    "file:///etc/passwd",
+])
+@patch("zendesk_mcp.tools.attachments.attachment_cache_dir")
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_rejects_url_outside_zendesk_host(mock_request, mock_cache_dir, url, tmp_path):
+    mock_cache_dir.return_value = tmp_path / "attachments" / "12345"
+
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data(url, "a.txt", 12345))
+
+    assert result["type"] == "error"
+    assert "acme.zendesk.com" in result["message"]
+    mock_request.assert_not_called()
+    assert not (tmp_path / "attachments").exists()
+
+
+@patch("zendesk_mcp.tools.attachments.load_config", return_value={})
+@patch("zendesk_mcp.tools.attachments.auth.request")
+def test_download_requires_configured_subdomain(mock_request, _cfg):
+    from zendesk_mcp.tools.attachments import _download_attachment_data
+    result = json.loads(_download_attachment_data("https://acme.zendesk.com/a.txt", "a.txt", 12345))
+
+    assert result["type"] == "error"
+    assert "zendesk-mcp setup" in result["message"]
+    mock_request.assert_not_called()

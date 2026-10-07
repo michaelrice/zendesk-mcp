@@ -3,12 +3,13 @@ import json
 import tarfile
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pdfplumber
 from PIL import Image
 
 from zendesk_mcp.client import get_client, ConfigError
-from zendesk_mcp.config import attachment_cache_dir
+from zendesk_mcp.config import attachment_cache_dir, load_config
 from zendesk_mcp import auth
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
 
@@ -44,12 +45,34 @@ _ARCHIVE_FILE_LIST_CAP = 500
 _PDF_TEXT_CAP_BYTES = 500_000
 
 
+def _validate_attachment_url(attachment_url: str) -> str | None:
+    """Return an error message unless the URL points at the configured Zendesk host.
+
+    The download is made with the OAuth bearer token attached, and the URL is supplied
+    by the model (and so, indirectly, by whoever wrote the ticket). Pinning it to
+    ``https://<subdomain>.zendesk.com`` keeps the token from being sent anywhere else.
+    """
+    subdomain = (load_config().get("subdomain") or "").strip().lower()
+    if not subdomain:
+        return "Zendesk not configured. Run: zendesk-mcp setup"
+    parsed = urlparse(attachment_url)
+    if parsed.scheme != "https" or (parsed.hostname or "").lower() != f"{subdomain}.zendesk.com":
+        return (
+            f"Refusing to download: attachment_url must be an https URL on "
+            f"{subdomain}.zendesk.com (use the download_url from zendesk_list_attachments)."
+        )
+    return None
+
+
 def _download_attachment_data(
     attachment_url: str,
     filename: str,
     ticket_id: int,
     dest_dir: str | None = None,
 ) -> str:
+    url_error = _validate_attachment_url(attachment_url)
+    if url_error:
+        return json.dumps({"type": "error", "message": url_error})
     if dest_dir:
         target_dir = Path(dest_dir).expanduser()
     else:
