@@ -2,6 +2,7 @@ import json
 from zendesk_mcp.client import get_client, get_oauth_session, ConfigError
 from zendesk_mcp import auth
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 
 def _list_views_data() -> str:
@@ -51,6 +52,7 @@ def _get_view_tickets_data(view_id: int) -> str:
             "requester_id": t.requester_id,
             "organization_id": t.organization_id,
             "group_id": getattr(t, "group_id", None),
+            "channel": ticket_channel(t),
             "created_at": str(t.created_at),
             "updated_at": str(t.updated_at),
             "tags": list(getattr(t, "tags", []) or []),

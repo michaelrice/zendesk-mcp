@@ -2,6 +2,7 @@ import json
 from zendesk_mcp.client import get_oauth_session, ConfigError
 from zendesk_mcp import auth
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 _VALID_SORT_BY = {"created_at", "updated_at", "priority", "status"}
 _VALID_SORT_ORDER = {"asc", "desc"}
@@ -50,6 +51,7 @@ def _get_tickets_data(
         "updated_at": t.get("updated_at"),
         "requester_id": t.get("requester_id"),
         "assignee_id": t.get("assignee_id"),
+        "channel": ticket_channel(t),
     } for t in raw_tickets]
 
     has_more = data.get("next_page") is not None

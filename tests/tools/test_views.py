@@ -106,3 +106,17 @@ def test_get_view_returns_not_found(mock_oauth, mock_httpx_get):
     result = _get_view_data(999)
     assert "999" in result
     assert "not found" in result.lower()
+
+
+@patch("zendesk_mcp.tools.views.get_client")
+def test_get_view_tickets_includes_channel(mock_get_client):
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+    t = _make_ticket(100)
+    t.via.channel = "web"
+    mock_client.views.tickets.return_value = [t]
+
+    from zendesk_mcp.tools.views import _get_view_tickets_data
+    parsed = json.loads(_get_view_tickets_data(7))
+
+    assert parsed[0]["channel"] == "web"

@@ -1,6 +1,7 @@
 import json
 from zendesk_mcp.client import get_client, ConfigError
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 
 def _search_tickets_data(keywords: str | None, status: str | None, limit: int) -> str:
@@ -29,6 +30,7 @@ def _search_tickets_data(keywords: str | None, status: str | None, limit: int) -
                     "name": ticket.assignee.name,
                     "email": ticket.assignee.email,
                 } if ticket.assignee else None,
+                "channel": ticket_channel(ticket),
                 "created_at": str(ticket.created_at),
                 "updated_at": str(ticket.updated_at),
                 "description": ticket.description[:300] if ticket.description else "",
@@ -60,9 +62,11 @@ def _get_ticket_data(ticket_id: int) -> str:
             } if ticket.assignee else None,
             "group": ticket.group.name if ticket.group else None,
             "tags": ticket.tags,
+            "channel": ticket_channel(ticket),
             "created_at": str(ticket.created_at),
             "updated_at": str(ticket.updated_at),
             "description": ticket.description,
+            "custom_fields": list(ticket.custom_fields or []),
             "ticket_url": f"https://{_get_subdomain()}.zendesk.com/agent/tickets/{ticket.id}",
         }, indent=2)
     except (ConfigError, TokenExpiredError) as e:

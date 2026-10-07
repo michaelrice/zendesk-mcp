@@ -148,11 +148,13 @@ tool are reported on stderr.
 
 ### Tickets
 
+Tools that return ticket records include `channel`, the channel the ticket arrived on (Zendesk's `via.channel`: `web`, `email`, `api`, ...), or `null` when Zendesk does not say. `zendesk_get_ticket` also returns `custom_fields` as a list of `{id, value}` pairs; a field that is not set on the ticket has a `null` value.
+
 | Tool | What it does |
 |---|---|
-| `zendesk_search_tickets` | Search tickets by status, priority, type, assignee, requester, tags, or keyword |
-| `zendesk_get_tickets` | List tickets with pagination and sorting (page, per_page, sort_by, sort_order) |
-| `zendesk_get_ticket` | Get one ticket's metadata |
+| `zendesk_search_tickets` | Search tickets by status, priority, type, assignee, requester, tags, or keyword. Each result includes `channel` |
+| `zendesk_get_tickets` | List tickets with pagination and sorting (page, per_page, sort_by, sort_order). Each ticket includes `channel` |
+| `zendesk_get_ticket` | Get one ticket's metadata, including `channel` and `custom_fields` |
 | `zendesk_create_ticket` | Create a new ticket (subject, description, optional priority/type/assignee_id/requester_id/tags/custom_fields) |
 | `zendesk_update_ticket` | Update one or more fields on an existing ticket (status, priority, subject, type, assignee_id, requester_id, group_id, custom_status_id, tags, custom_fields, due_at) |
 | `zendesk_get_comments` | Get the conversation thread on a ticket |
@@ -177,7 +179,7 @@ tool are reported on stderr.
 |---|---|
 | `zendesk_list_views` | List all active views |
 | `zendesk_get_view` | Get a view's filter conditions and execution settings |
-| `zendesk_get_view_tickets` | Fetch tickets currently matching a view |
+| `zendesk_get_view_tickets` | Fetch tickets currently matching a view. Each ticket includes `channel` |
 | `zendesk_list_macros` | List active macros with their actions |
 | `zendesk_preview_macro` | Preview what changes a macro would make |
 | `zendesk_apply_macro` | Apply a macro to a ticket (applies field changes and posts any comment) |
