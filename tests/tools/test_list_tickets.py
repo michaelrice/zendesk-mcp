@@ -101,3 +101,26 @@ def test_get_tickets_returns_config_error_message_when_unconfigured(mock_oauth):
     from zendesk_mcp.tools.list_tickets import _get_tickets_data
     result = _get_tickets_data()
     assert "zendesk-mcp setup" in result
+
+
+@patch("zendesk_mcp.tools.list_tickets.auth.request")
+@patch("zendesk_mcp.tools.list_tickets.get_oauth_session")
+def test_get_tickets_includes_channel_from_via(mock_oauth, mock_httpx_get):
+    mock_oauth.return_value = ("acme", "tok")
+    response = MagicMock()
+    response.json.return_value = {
+        "tickets": [
+            {"id": 1, "subject": "a", "status": "open", "via": {"channel": "api"}},
+            {"id": 2, "subject": "b", "status": "new"},
+        ],
+        "next_page": None,
+        "previous_page": None,
+    }
+    response.raise_for_status = MagicMock()
+    mock_httpx_get.return_value = response
+
+    from zendesk_mcp.tools.list_tickets import _get_tickets_data
+    parsed = json.loads(_get_tickets_data())
+
+    assert parsed["tickets"][0]["channel"] == "api"
+    assert parsed["tickets"][1]["channel"] is None

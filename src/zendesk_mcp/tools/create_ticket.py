@@ -2,6 +2,7 @@ import json
 from zenpy.lib.api_objects import Ticket as ZenpyTicket
 from zendesk_mcp.client import get_client, ConfigError
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 _VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
 _VALID_TYPES = {"problem", "incident", "question", "task"}
@@ -49,6 +50,7 @@ def _create_ticket_data(
             "status": refreshed.status,
             "priority": refreshed.priority,
             "type": getattr(refreshed, "type", None),
+            "channel": ticket_channel(refreshed),
             "created_at": str(refreshed.created_at),
             "updated_at": str(refreshed.updated_at),
             "requester_id": refreshed.requester_id,

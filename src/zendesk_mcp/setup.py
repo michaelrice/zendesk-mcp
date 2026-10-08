@@ -1,6 +1,7 @@
 import hmac
 import secrets
 import sys
+from getpass import getpass
 import threading
 import time
 import webbrowser
@@ -135,31 +136,38 @@ def _verify_token(subdomain: str, token: str) -> dict:
     return response.json()["user"]
 
 
-def run_setup() -> None:
-    import os
-    print("\n  zendesk-mcp setup\n")
+def _collect_credentials(env) -> tuple[str, str, str]:
+    """Subdomain, client_id and client_secret from the environment, else from prompts.
 
-    env_subdomain = os.environ.get("ZENDESK_SUBDOMAIN", "")
-    env_client_id = os.environ.get("ZENDESK_CLIENT_ID", "")
-    env_client_secret = os.environ.get("ZENDESK_CLIENT_SECRET", "")
-
-    if env_subdomain:
-        subdomain = env_subdomain
+    The secret is read with getpass so it is not echoed to the terminal or left in
+    scrollback.
+    """
+    subdomain = env.get("ZENDESK_SUBDOMAIN", "")
+    if subdomain:
         print(f"  Zendesk subdomain: {subdomain} (from ZENDESK_SUBDOMAIN)")
     else:
         subdomain = input("  Zendesk subdomain (e.g. 'acme' for acme.zendesk.com): ").strip()
 
-    if env_client_id:
-        client_id = env_client_id
+    client_id = env.get("ZENDESK_CLIENT_ID", "")
+    if client_id:
         print(f"  OAuth client_id: {client_id} (from ZENDESK_CLIENT_ID)")
     else:
         client_id = input("  OAuth client_id: ").strip()
 
-    if env_client_secret:
-        client_secret = env_client_secret
+    client_secret = env.get("ZENDESK_CLIENT_SECRET", "")
+    if client_secret:
         print("  OAuth client_secret: *** (from ZENDESK_CLIENT_SECRET)")
     else:
-        client_secret = input("  OAuth client_secret: ").strip()
+        client_secret = getpass("  OAuth client_secret: ").strip()
+
+    return subdomain, client_id, client_secret
+
+
+def run_setup() -> None:
+    import os
+    print("\n  zendesk-mcp setup\n")
+
+    subdomain, client_id, client_secret = _collect_credentials(os.environ)
 
     state = secrets.token_urlsafe(32)
     auth_url = _authorization_url(subdomain, client_id, state)

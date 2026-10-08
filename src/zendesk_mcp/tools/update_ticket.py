@@ -4,6 +4,7 @@ from zenpy.lib.api_objects import Ticket
 
 from zendesk_mcp.client import get_client, ConfigError
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 _VALID_STATUSES = {"new", "open", "pending", "hold", "solved", "closed"}
 _VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
@@ -39,6 +40,7 @@ def _update_ticket_data(ticket_id: int, **fields) -> str:
             "description": getattr(refreshed, "description", None),
             "status": refreshed.status,
             "priority": refreshed.priority,
+            "channel": ticket_channel(refreshed),
             "type": getattr(refreshed, "type", None),
             "created_at": str(refreshed.created_at),
             "updated_at": str(refreshed.updated_at),

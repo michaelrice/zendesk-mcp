@@ -300,3 +300,33 @@ def test_update_ticket_accepts_group_id_and_custom_status_id(mock_get_client):
     parsed = json.loads(result)
     assert parsed["group_id"] == 77
     assert parsed["custom_status_id"] == 88
+
+
+@patch("zendesk_mcp.tools.update_ticket.get_client")
+def test_update_ticket_includes_channel(mock_get_client):
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+    t = MagicMock()
+    t.id = 12345
+    t.subject = "s"
+    t.description = "d"
+    t.organization_id = 5
+    t.status = "open"
+    t.priority = "high"
+    t.type = "problem"
+    t.created_at = datetime(2026, 5, 6, 12, 0, 0)
+    t.updated_at = datetime(2026, 5, 6, 12, 0, 0)
+    t.requester_id = 1
+    t.assignee_id = 2
+    t.group_id = 3
+    t.custom_status_id = 4
+    t.due_at = None
+    t.tags = []
+    t.custom_fields = []
+    t.via.channel = "email"
+    mock_client.tickets.return_value = t
+
+    from zendesk_mcp.tools.update_ticket import _update_ticket_data
+    parsed = json.loads(_update_ticket_data(12345, status="open"))
+
+    assert parsed["channel"] == "email"

@@ -120,3 +120,21 @@ def test_create_ticket_returns_error_when_audit_lacks_ticket(mock_get_client, mo
 
     assert "could not be determined" in result.lower()
     mock_client.tickets.assert_not_called()
+
+
+@patch("zendesk_mcp.tools.create_ticket.ZenpyTicket")
+@patch("zendesk_mcp.tools.create_ticket.get_client")
+def test_create_ticket_includes_channel(mock_get_client, mock_ticket_cls):
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+    audit = MagicMock()
+    audit.ticket.id = 555
+    mock_client.tickets.create.return_value = audit
+    refreshed = _make_refreshed_ticket()
+    refreshed.via.channel = "api"
+    mock_client.tickets.return_value = refreshed
+
+    from zendesk_mcp.tools.create_ticket import _create_ticket_data
+    parsed = json.loads(_create_ticket_data(subject="New issue", description="Something is broken"))
+
+    assert parsed["channel"] == "api"

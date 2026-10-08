@@ -192,3 +192,28 @@ def test_list_macros_returns_config_error(mock_get_client):
     from zendesk_mcp.tools.macros import _list_macros_data
     result = _list_macros_data()
     assert "zendesk-mcp setup" in result
+
+
+@patch("zendesk_mcp.tools.macros.get_client")
+@patch("zendesk_mcp.tools.macros.auth.request")
+@patch("zendesk_mcp.tools.macros.get_oauth_session")
+def test_apply_macro_includes_channel(mock_oauth, mock_httpx_get, mock_get_client):
+    mock_oauth.return_value = ("acme", "tok")
+    preview_response = MagicMock()
+    preview_response.json.return_value = {"result": {}}
+    preview_response.raise_for_status = MagicMock()
+    mock_httpx_get.return_value = preview_response
+
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+    refreshed = MagicMock()
+    refreshed.id = 10
+    refreshed.status = "open"
+    refreshed.tags = []
+    refreshed.via.channel = "web"
+    mock_client.tickets.return_value = refreshed
+
+    from zendesk_mcp.tools.macros import _apply_macro_data
+    parsed = json.loads(_apply_macro_data(10, 55))
+
+    assert parsed["channel"] == "web"

@@ -3,6 +3,7 @@ from zenpy.lib.api_objects import Ticket as ZenpyTicket, Comment
 from zendesk_mcp.client import get_client, get_oauth_session, ConfigError
 from zendesk_mcp import auth
 from zendesk_mcp.auth import api_error_message, TokenExpiredError
+from zendesk_mcp.tools.channel import ticket_channel
 
 _SKIP_TICKET_FIELDS = {"id", "url", "created_at", "updated_at"}
 
@@ -88,6 +89,7 @@ def _apply_macro_data(ticket_id: int, macro_id: int) -> str:
         return json.dumps({
             "id": refreshed.id,
             "status": refreshed.status,
+            "channel": ticket_channel(refreshed),
             "tags": list(getattr(refreshed, "tags", []) or []),
             "applied_changes": applied_changes,
             "comment_added": comment_added,

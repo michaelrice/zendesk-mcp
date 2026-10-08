@@ -53,6 +53,15 @@ def make_mock_ticket(ticket_id=12345, subject="Login fails after password reset"
     group.name = "Support"
     ticket.group = group
 
+    via = MagicMock()
+    via.channel = "email"
+    ticket.via = via
+
+    ticket.custom_fields = [
+        {"id": 360000000001, "value": "drp-4.14"},
+        {"id": 360000000002, "value": None},
+    ]
+
     return ticket
 
 
